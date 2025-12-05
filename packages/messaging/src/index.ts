@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Main client class
-export { SuiStackMessagingClient } from './client.js';
+export { SuiStackMessagingClient, messaging } from './client.js';
 
 // Types
 export type * from './types.js';
@@ -32,3 +32,6 @@ export type { StorageAdapter, StorageConfig, StorageOptions } from './storage/ad
 // Walrus types
 export { WalrusStorageAdapter } from './storage/adapters/walrus/walrus.js';
 export type * from './storage/adapters/walrus/types.js';
+
+// Logging utilities (optional - requires @logtape/logtape peer dependency)
+export { getLogger, LOG_CATEGORIES } from './logging/index.js';
