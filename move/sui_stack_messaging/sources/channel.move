@@ -1,7 +1,9 @@
 module sui_stack_messaging::channel;
 
 use sui::clock::Clock;
+use sui::event;
 use sui::table_vec::{Self, TableVec};
+use std::string::String;
 use sui_stack_messaging::admin;
 use sui_stack_messaging::attachment::Attachment;
 use sui_stack_messaging::auth::{Self, Auth};
@@ -22,8 +24,36 @@ const ENoEncryptionKey: u64 = 3;
 const ETextTooLarge: u64 = 4;
 const ETooManyAttachments: u64 = 5;
 const ENonceTooLarge: u64 = 6;
+const EPackageAlreadyRegistered: u64 = 100;
+const EBlobAlreadyRegistered: u64 = 101;
 
 // === Structs ===
+
+/// A package registered by a team member for judge verification
+public struct RegisteredPackage has copy, drop, store {
+    /// The deployed package ID
+    package_id: address,
+    /// Who registered it
+    registered_by: address,
+    /// When it was registered (timestamp in ms)
+    registered_at_ms: u64,
+    /// Optional description of the package
+    description: String,
+}
+
+/// A Walrus blob registered by a team member for judge verification
+public struct RegisteredBlob has copy, drop, store {
+    /// The Walrus blob ID
+    blob_id: String,
+    /// Original file name
+    file_name: String,
+    /// File size in bytes
+    file_size: u64,
+    /// Who registered it
+    registered_by: address,
+    /// When it was registered (timestamp in ms)
+    registered_at_ms: u64,
+}
 
 /// A Shared object representing a group-communication channel.
 public struct Channel has key {
@@ -55,6 +85,13 @@ public struct Channel has key {
     /// Holds the latest key, the latest_version,
     /// and a TableVec of the historical keys
     encryption_key_history: EncryptionKeyHistory,
+    // === Hackathon-specific fields for judge verification ===
+    /// Packages deployed by team members (for judge verification)
+    registered_packages: vector<RegisteredPackage>,
+    /// Walrus blobs uploaded by team members (for judge verification)
+    registered_blobs: vector<RegisteredBlob>,
+    /// SuiNS subdomain name (e.g., "team-42.fmsprint.sui")
+    subdomain_name: Option<String>,
 }
 
 // === Witnesses ===
@@ -67,6 +104,20 @@ public struct SimpleMessenger() has drop;
 // === Keys ===
 
 // === Events ===
+
+/// Event emitted when a package is registered for judge verification
+public struct PackageRegisteredEvent has copy, drop {
+    channel_id: ID,
+    package_id: address,
+    registered_by: address,
+}
+
+/// Event emitted when a Walrus blob is registered for judge verification
+public struct BlobRegisteredEvent has copy, drop {
+    channel_id: ID,
+    blob_id: String,
+    registered_by: address,
+}
 
 // === Method Aliases ===
 
@@ -117,6 +168,10 @@ public fun new(
         created_at_ms: clock.timestamp_ms(),
         updated_at_ms: clock.timestamp_ms(),
         encryption_key_history: encryption_key_history::empty(ctx),
+        // Initialize hackathon fields
+        registered_packages: vector::empty<RegisteredPackage>(),
+        registered_blobs: vector::empty<RegisteredBlob>(),
+        subdomain_name: option::none<String>(),
     };
 
     (channel, creator_cap, creator_member_cap)
@@ -235,6 +290,104 @@ public fun send_message(
             ),
         );
 }
+
+// === Hackathon Functions (Judge Verification) ===
+
+/// Register a deployed package to this channel for judge verification
+/// Only channel members can register packages they deployed
+public fun register_package(
+    self: &mut Channel,
+    member_cap: &MemberCap,
+    package_id: address,
+    description: String,
+    clock: &Clock,
+    ctx: &TxContext,
+) {
+    // Verify caller is a member
+    assert!(self.is_member(member_cap), ENotMember);
+
+    // Verify package_id is not already registered
+    let mut i = 0;
+    let len = self.registered_packages.length();
+    while (i < len) {
+        assert!(self.registered_packages[i].package_id != package_id, EPackageAlreadyRegistered);
+        i = i + 1;
+    };
+
+    // Add the package
+    let package = RegisteredPackage {
+        package_id,
+        registered_by: ctx.sender(),
+        registered_at_ms: clock.timestamp_ms(),
+        description,
+    };
+    self.registered_packages.push_back(package);
+
+    // Emit event for indexing
+    event::emit(PackageRegisteredEvent {
+        channel_id: self.id.to_inner(),
+        package_id,
+        registered_by: ctx.sender(),
+    });
+
+    self.updated_at_ms = clock.timestamp_ms();
+}
+
+/// Register a Walrus blob to this channel for judge verification
+/// Only channel members can register blobs they uploaded
+public fun register_blob(
+    self: &mut Channel,
+    member_cap: &MemberCap,
+    blob_id: String,
+    file_name: String,
+    file_size: u64,
+    clock: &Clock,
+    ctx: &TxContext,
+) {
+    // Verify caller is a member
+    assert!(self.is_member(member_cap), ENotMember);
+
+    // Verify blob_id is not already registered
+    let mut i = 0;
+    let len = self.registered_blobs.length();
+    while (i < len) {
+        assert!(self.registered_blobs[i].blob_id != blob_id, EBlobAlreadyRegistered);
+        i = i + 1;
+    };
+
+    // Add the blob
+    let blob = RegisteredBlob {
+        blob_id,
+        file_name,
+        file_size,
+        registered_by: ctx.sender(),
+        registered_at_ms: clock.timestamp_ms(),
+    };
+    self.registered_blobs.push_back(blob);
+
+    // Emit event for indexing
+    event::emit(BlobRegisteredEvent {
+        channel_id: self.id.to_inner(),
+        blob_id,
+        registered_by: ctx.sender(),
+    });
+
+    self.updated_at_ms = clock.timestamp_ms();
+}
+
+/// Set the SuiNS subdomain name for this channel
+/// Only the channel creator can set this
+public fun set_subdomain_name(
+    self: &mut Channel,
+    creator_cap: &CreatorCap,
+    name: String,
+    clock: &Clock,
+) {
+    assert!(self.is_creator(creator_cap), ENotCreator);
+    self.subdomain_name = option::some(name);
+    self.updated_at_ms = clock.timestamp_ms();
+}
+
 // === View Functions ===
 
 /// Returns a namespace for the channel to be
@@ -242,6 +395,31 @@ public fun send_message(
 /// In this case we use the Channel's UID bytes
 public fun namespace(self: &Channel): vector<u8> {
     self.id.to_bytes()
+}
+
+/// Get all registered packages for judge verification
+public fun registered_packages(self: &Channel): &vector<RegisteredPackage> {
+    &self.registered_packages
+}
+
+/// Get all registered blobs for judge verification
+public fun registered_blobs(self: &Channel): &vector<RegisteredBlob> {
+    &self.registered_blobs
+}
+
+/// Get the SuiNS subdomain name
+public fun subdomain_name(self: &Channel): &Option<String> {
+    &self.subdomain_name
+}
+
+/// Get count of registered packages
+public fun registered_packages_count(self: &Channel): u64 {
+    self.registered_packages.length()
+}
+
+/// Get count of registered blobs
+public fun registered_blobs_count(self: &Channel): u64 {
+    self.registered_blobs.length()
 }
 
 // === Package Functions ===

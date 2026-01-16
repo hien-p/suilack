@@ -1,0 +1,12 @@
+{
+  "messagingChannelId": "0x5c5d67b254e5b25730c4edff2efec712820ed05bf225d158a2a2522e73a66b16",
+  "creatorCapId": "0x783ec47327d3ea6cbf6115e21b3028aa10b4c2c063d37d5e532b291c797aa1c9",
+  "serverMemberCapId": null,
+  "members": [
+    "0x010030a0afc40b6d8fe99cee368cab5652baa0d36b7be60a9b017d5228c0bdfd",
+    "0xf7e613fdc208591dfcc58ec7dd11609b64298a20be48fa065fa6507cf5b4a2a9",
+    "0xc8fa2d9c55b8104a22894f1e98e274d43963f2bea568652c3c77347cac2b7d24"
+  ],
+  "createdAt": "2026-01-15T16:24:37.749Z",
+  "updatedAt": "2026-01-16T05:16:36.582Z"
+}

@@ -7,7 +7,8 @@ const ETooManyMessageTextChars: u64 = 2;
 const ETooManyMessageAttachments: u64 = 3;
 
 // === Constants ===
-const MAX_CHANNEL_MEMBERS: u64 = 10;
+/// Maximum members per team channel (5 hackers per team for hackathon)
+const MAX_CHANNEL_MEMBERS: u64 = 5;
 const MAX_CHANNEL_ROLES: u64 = 3;
 const MAX_MESSAGE_TEXT_SIZE_IN_CHARS: u64 = 512;
 const MAX_MESSAGE_ATTACHMENTS: u64 = 10;

@@ -773,11 +773,16 @@ export class SuiStackMessagingClient {
 		creatorAddress,
 		initialMemberAddresses,
 	}: CreateChannelFlowOpts): CreateChannelFlow {
+		// Capture packageId for use in closures
+		const packageId = this.#packageConfig.packageId;
+
 		const build = () => {
 			const logger = getLogger(LOG_CATEGORIES.CLIENT_WRITES);
 			const tx = new Transaction();
-			const config = tx.add(noneConfig());
-			const [channel, creatorCap, creatorMemberCap] = tx.add(newChannel({ arguments: { config } }));
+			const config = tx.add(noneConfig({ package: packageId }));
+			const [channel, creatorCap, creatorMemberCap] = tx.add(
+				newChannel({ package: packageId, arguments: { config } }),
+			);
 
 			// Add initial members if provided
 			// Deduplicate addresses and filter out creator (who already gets a MemberCap automatically)
@@ -800,6 +805,7 @@ export class SuiStackMessagingClient {
 			if (uniqueAddresses.length > 0) {
 				memberCaps = tx.add(
 					addMembers({
+						package: packageId,
 						arguments: {
 							self: channel,
 							memberCap: creatorMemberCap,
@@ -810,16 +816,18 @@ export class SuiStackMessagingClient {
 			}
 
 			// Share the channel and transfer creator cap
-			tx.add(shareChannel({ arguments: { self: channel, creatorCap } }));
+			tx.add(shareChannel({ package: packageId, arguments: { self: channel, creatorCap } }));
 			// Transfer MemberCaps
 			tx.add(
 				transferMemberCap({
+					package: packageId,
 					arguments: { cap: creatorMemberCap, creatorCap, recipient: creatorAddress },
 				}),
 			);
 			if (memberCaps !== null) {
 				tx.add(
 					transferMemberCaps({
+						package: packageId,
 						arguments: {
 							memberAddresses: tx.pure.vector('address', uniqueAddresses),
 							memberCaps,
@@ -829,7 +837,7 @@ export class SuiStackMessagingClient {
 				);
 			}
 
-			tx.add(transferCreatorCap({ arguments: { self: creatorCap } }));
+			tx.add(transferCreatorCap({ package: packageId, arguments: { self: creatorCap } }));
 
 			return tx;
 		};
@@ -851,6 +859,7 @@ export class SuiStackMessagingClient {
 
 			tx.add(
 				addEncryptedKey({
+					package: packageId,
 					arguments: {
 						self: tx.object(creatorCap.channel_id),
 						memberCap: tx.object(creatorMemberCap.id.id),

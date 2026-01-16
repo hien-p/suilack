@@ -44,4 +44,4 @@ testnet-setup.*.sh
 load-tests/k6/details*.json
 
 .DS_store
-CLAUDE.md
+CLAUDE.mddocs/
